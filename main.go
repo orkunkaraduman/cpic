@@ -24,16 +24,17 @@ func main() {
 	var (
 		verbose        int
 		debugMode      bool
-		srcDirPath     string
+		//srcDirPath     string
 		dstDirPath     string
 		followSymLinks bool
 		extList        string
 		format         string
 		rm             bool
+		srcDirPaths     []string
 	)
 	flag.IntVar(&verbose, "v", 0, "verbose level")
 	flag.BoolVar(&debugMode, "debug", false, "debug mode")
-	flag.StringVar(&srcDirPath, "s", ".", "source directory")
+	//flag.StringVar(&srcDirPath, "s", ".", "source directory")
 	flag.StringVar(&dstDirPath, "d", ".", "destination directory")
 	flag.BoolVar(&followSymLinks, "l", false, "follow symbolic links")
 	flag.StringVar(&extList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extention list")
@@ -69,19 +70,24 @@ func main() {
 	var err error
 
 	var stat os.FileInfo
-	srcDirPath, err = filepath.Abs(srcDirPath)
-	if err != nil {
-		xlog.Fatalf("source directory %q abs error: %v", srcDirPath, err)
-		return
-	}
-	stat, err = os.Lstat(srcDirPath)
-	if err != nil {
-		xlog.Fatalf("source directory %q stat error: %v", srcDirPath, err)
-		return
-	}
-	if !stat.IsDir() {
-		xlog.Fatalf("source directory %q is not directory", srcDirPath)
-		return
+
+	srcDirPaths = make([]string, 0, flag.NArg())
+	for _, srcDirPath := range flag.Args() {
+		srcDirPath, err = filepath.Abs(srcDirPath)
+		if err != nil {
+			xlog.Fatalf("source directory %q abs error: %v", srcDirPath, err)
+			return
+		}
+		stat, err = os.Lstat(srcDirPath)
+		if err != nil {
+			xlog.Fatalf("source directory %q stat error: %v", srcDirPath, err)
+			return
+		}
+		if !stat.IsDir() {
+			xlog.Fatalf("source directory %q is not directory", srcDirPath)
+			return
+		}
+		srcDirPaths = append(srcDirPaths, srcDirPath)
 	}
 
 	dstDirPath, err = filepath.Abs(dstDirPath)
@@ -141,7 +147,14 @@ func main() {
 	srcFilePathCh := make(chan string)
 
 	wg.Add(1)
-	go fileScan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extentions)
+	go func() {
+		defer wg.Done()
+		for _, srcDirPath := range srcDirPaths {
+			wg.Add(1)
+			fileScan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extentions)
+		}
+		close(srcFilePathCh)
+	}()
 
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)

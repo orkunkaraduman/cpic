@@ -17,9 +17,8 @@ type fileScanRecursion struct {
 }
 
 func fileScan(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extentions map[string]struct{}) {
+	defer wg.Done()
 	fileScan2(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extentions, fileScanRecursion{})
-	close(srcFilePathCh)
-	wg.Done()
 }
 
 func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extentions map[string]struct{}, r fileScanRecursion) {
@@ -36,6 +35,10 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 		r.firstSrcDirStat, err = srcDir.Stat()
 		if err != nil {
 			logger.Errorf("source directory stat error: %v", err)
+			return
+		}
+		if !r.firstSrcDirStat.IsDir() {
+			logger.Errorf("source directory is not directory")
 			return
 		}
 	}
