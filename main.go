@@ -37,7 +37,7 @@ func main() {
 	//flag.StringVar(&srcDirPath, "s", ".", "source directory")
 	flag.StringVar(&dstDirPath, "d", ".", "destination directory")
 	flag.BoolVar(&followSymLinks, "l", false, "follow symbolic links")
-	flag.StringVar(&extList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extention list")
+	flag.StringVar(&extList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extension list")
 	flag.StringVar(&format, "f", "%Y/%m/%d", "destination directory format")
 	flag.BoolVar(&rm, "r", false, "remove source")
 	flag.Parse()
@@ -124,13 +124,13 @@ func main() {
 	}
 
 	extList = strings.ToUpper(extList)
-	extentions := make(map[string]struct{}, 128)
+	extensions := make(map[string]struct{}, 128)
 	for _, ext := range strings.Split(extList, ",") {
 		ext = strings.TrimSpace(ext)
 		if ext == "" {
 			continue
 		}
-		extentions[ext] = struct{}{}
+		extensions[ext] = struct{}{}
 	}
 
 	xlog.Info("cpic started")
@@ -144,19 +144,20 @@ func main() {
 		xlog.Info("cpic terminating")
 	}()
 
-	srcFilePathCh := make(chan string)
+	numCPU := runtime.NumCPU()
+	srcFilePathCh := make(chan string, numCPU*2)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for _, srcDirPath := range srcDirPaths {
 			wg.Add(1)
-			fileScan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extentions)
+			fileScan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extensions)
 		}
 		close(srcFilePathCh)
 	}()
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < numCPU; i++ {
 		wg.Add(1)
 		go copyFiles(ctx, wg, srcFilePathCh, dstDirPath, format, rm, tmpDirPath)
 	}

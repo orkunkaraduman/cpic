@@ -62,7 +62,11 @@ func copyFile(ctx context.Context, srcFilePath string, dstDirPath string, format
 	var tm time.Time
 	ef, err := exif.Decode(srcFile)
 	if err != nil {
-		errLogger.Warningf("source file exif decode error: %v", err)
+		if err == io.EOF {
+			errLogger.Warningf("source file exif not found")
+		} else {
+			errLogger.Warningf("source file exif decode error: %v", err)
+		}
 	} else {
 		tm, err = ef.DateTime()
 		if err != nil {

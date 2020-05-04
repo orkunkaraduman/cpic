@@ -16,12 +16,12 @@ type fileScanRecursion struct {
 	firstSrcDirStat os.FileInfo
 }
 
-func fileScan(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extentions map[string]struct{}) {
+func fileScan(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extensions map[string]struct{}) {
 	defer wg.Done()
-	fileScan2(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extentions, fileScanRecursion{})
+	fileScan2(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extensions, fileScanRecursion{})
 }
 
-func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extentions map[string]struct{}, r fileScanRecursion) {
+func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extensions map[string]struct{}, r fileScanRecursion) {
 	logger := xlog.WithFieldKeyVals("srcDirPath", srcDirPath)
 	srcDir, err := os.OpenFile(srcDirPath, os.O_RDONLY, os.ModeDir)
 	if err != nil {
@@ -74,7 +74,7 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 				}
 				r2 := r
 				r2.depth++
-				fileScan2(ctx, wg, path, srcFilePathCh, followSymLinks, extentions, r2)
+				fileScan2(ctx, wg, path, srcFilePathCh, followSymLinks, extensions, r2)
 			case mode&os.ModeSymlink != 0:
 				if !followSymLinks {
 					break
@@ -116,7 +116,7 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 				}
 				tryAgain = true
 			case mode&os.ModeType == 0:
-				if _, ok := extentions[strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), "."))]; !ok {
+				if _, ok := extensions[strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), "."))]; !ok {
 					break
 				}
 				select {
