@@ -127,13 +127,16 @@ func main() {
 		extentions[ext] = struct{}{}
 	}
 
+	xlog.Info("cpic started")
+
 	wg := new(sync.WaitGroup)
 
-	/*wg.Add(1)
+	//wg.Add(1)
 	go func() {
-		defer wg.Done()
+		//defer wg.Done()
 		<-ctx.Done()
-	}()*/
+		xlog.Info("cpic terminating")
+	}()
 
 	srcFilePathCh := make(chan string)
 
@@ -142,8 +145,9 @@ func main() {
 
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
-		go work(ctx, wg, srcFilePathCh, dstDirPath, format, rm, tmpDirPath)
+		go copyFiles(ctx, wg, srcFilePathCh, dstDirPath, format, rm, tmpDirPath)
 	}
 
 	wg.Wait()
+	xlog.Info("cpic terminated")
 }

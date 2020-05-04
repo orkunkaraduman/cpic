@@ -23,9 +23,10 @@ func fileScan(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFil
 }
 
 func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFilePathCh chan<- string, followSymLinks bool, extentions map[string]struct{}, r fileScanRecursion) {
+	logger := xlog.WithFieldKeyVals("srcDirPath", srcDirPath)
 	srcDir, err := os.OpenFile(srcDirPath, os.O_RDONLY, os.ModeDir)
 	if err != nil {
-		xlog.Errorf("source directory %q open error: %v", srcDirPath, err)
+		logger.Errorf("source directory open error: %v", err)
 		return
 	}
 	defer srcDir.Close()
@@ -34,14 +35,14 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 		r.firstSrcDirPath = srcDirPath
 		r.firstSrcDirStat, err = srcDir.Stat()
 		if err != nil {
-			xlog.Errorf("source directory %q stat error: %v", srcDirPath, err)
+			logger.Errorf("source directory stat error: %v", err)
 			return
 		}
 	}
 
 	stats, err := srcDir.Readdir(0)
 	if err != nil {
-		xlog.Errorf("source directory %q readdir error: %v", srcDirPath, err)
+		logger.Errorf("source directory readdir error: %v", err)
 		return
 	}
 
@@ -59,6 +60,8 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 		path := srcDirPath + "/" + stat.Name()
 		mode := stat.Mode()
 
+		logger := logger.WithFieldKeyVals("srcFilePath", path)
+
 		for tryAgain := true; tryAgain; {
 			tryAgain = false
 			switch {
@@ -75,13 +78,13 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 				}
 				path2, err := filepath.EvalSymlinks(path)
 				if err != nil {
-					xlog.Errorf("sym-link %q eval error: %v", path, err)
+					logger.Errorf("sym-link %q eval error: %v", path, err)
 					break
 				}
 				path = path2
 				stat, err = os.Lstat(path)
 				if err != nil {
-					xlog.Errorf("sym-link target %q stat error: %v", path, err)
+					logger.Errorf("sym-link target %q stat error: %v", path, err)
 					break
 				}
 				mode = stat.Mode()
@@ -101,7 +104,7 @@ func fileScan2(ctx context.Context, wg *sync.WaitGroup, srcDirPath string, srcFi
 				if stat.Mode()&os.ModeSymlink == 0 && strings.EqualFold(path2, r.firstSrcDirPath) {
 					stat2, err := os.Lstat(path2)
 					if err != nil {
-						xlog.Errorf("source of sym-link target %q stat error: %v", path2, err)
+						logger.Errorf("source of sym-link target %q stat error: %v", path2, err)
 						break
 					}
 					if os.SameFile(stat, stat2) {
