@@ -54,7 +54,7 @@ func main() {
 	}
 	xlog.SetStackTraceSeverity(xlog.SeverityWarning)
 	xlog.SetVerbose(xlog.Verbose(verbose))
-	xlog.SetOutputWriter(os.Stderr)
+	xlog.SetOutputWriter(os.Stdout)
 	xlog.SetOutputFlags(xlogOutputFlags)
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
