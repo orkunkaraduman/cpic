@@ -72,9 +72,9 @@ func copyFile(ctx context.Context, srcFilePath string, dstDirPath string, format
 	ext := filepath.Ext(srcFilePath)
 	name := strings.ToUpper(strings.TrimSuffix(filepath.Base(srcFilePath), ext))
 	ext = strings.ToUpper(ext)
-	dstFileDirPath := dstDirPath +"/noexif"
+	dstFileDirPath := dstDirPath + "/noexif"
 	if !tm.IsZero() {
-		dstFileDirPath = dstDirPath +"/"+strftime.Format(format, tm)
+		dstFileDirPath = dstDirPath + "/" + strftime.Format(format, tm)
 	}
 	errLogger = errLogger.WithFieldKeyVals("dstFileDirPath", dstFileDirPath)
 	if err := os.MkdirAll(dstFileDirPath, 0755); err != nil {
@@ -88,9 +88,14 @@ func copyFile(ctx context.Context, srcFilePath string, dstDirPath string, format
 		return false
 	}
 	defer tmpFile.Close()
+
+	linked := false
 	tmpFilePath := tmpFile.Name()
 	errLogger = errLogger.WithFieldKeyVals("tmpFilePath", tmpFilePath)
 	defer func() {
+		if linked {
+			return
+		}
 		if err := os.Remove(tmpFilePath); err != nil {
 			errLogger.Warningf("temp file remove error: %v", err)
 		}
@@ -142,25 +147,35 @@ func copyFile(ctx context.Context, srcFilePath string, dstDirPath string, format
 	}
 
 	sumStr := strings.ToUpper(hex.EncodeToString(fh.sum[:]))
-	linked := false
 	for i := 0; i < 1+len(sumStr)/4; i++ {
-		path := dstFileDirPath +"/"+name+ext
+		path := dstFileDirPath + "/" + name + ext
 		if i > 0 {
-			k := (i-1)*4
-			path = dstFileDirPath +"/"+name+"-"+sumStr[k:k+4]+ext
+			k := (i - 1) * 4
+			path = dstFileDirPath + "/" + name + "-" + sumStr[k:k+4] + ext
 		}
 		fileLock(path)
-		if err := os.Link(tmpFile.Name(), path); err == nil || !os.IsExist(err) {
+		if _, err := os.Stat(path); err == nil || !os.IsNotExist(err) {
 			fileUnlock(path)
-			if err != nil {
-				errLogger.Errorf("destination file %q link error: %v", path, err)
-				break
+			if err == nil {
+				continue
 			}
-			linked = true
-			errLogger = errLogger.WithFieldKeyVals("dstFilePath", path)
-			break
+			fileHashDel(fh)
+			errLogger.Errorf("destination file %q stat error: %v", path, err)
+			return false
+		}
+		if err := os.Rename(tmpFile.Name(), path); err != nil {
+			fileUnlock(path)
+			if os.IsExist(err) {
+				continue
+			}
+			fileHashDel(fh)
+			errLogger.Errorf("destination file %q link error: %v", path, err)
+			return false
 		}
 		fileUnlock(path)
+		linked = true
+		errLogger = errLogger.WithFieldKeyVals("dstFilePath", path)
+		break
 	}
 
 	if !linked {
