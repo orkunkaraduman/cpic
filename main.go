@@ -71,37 +71,49 @@ func main() {
 	var stat os.FileInfo
 	srcDirPath, err = filepath.Abs(srcDirPath)
 	if err != nil {
-		xlog.Fatalf("source %q abs error: %v", srcDirPath, err)
+		xlog.Fatalf("source directory %q abs error: %v", srcDirPath, err)
 		return
 	}
 	stat, err = os.Lstat(srcDirPath)
 	if err != nil {
-		xlog.Fatalf("source %q stat error: %v", srcDirPath, err)
+		xlog.Fatalf("source directory %q stat error: %v", srcDirPath, err)
 		return
 	}
 	if !stat.IsDir() {
-		xlog.Fatalf("source %q is not directory", srcDirPath)
+		xlog.Fatalf("source directory %q is not directory", srcDirPath)
 		return
 	}
 
 	dstDirPath, err = filepath.Abs(dstDirPath)
 	if err != nil {
-		xlog.Fatalf("destination %q stat error: %v", dstDirPath, err)
+		xlog.Fatalf("destination directory %q abs error: %v", dstDirPath, err)
 		return
 	}
 	stat, err = os.Lstat(dstDirPath)
 	if err != nil {
-		xlog.Fatalf("destination %q abs error: %v", dstDirPath, err)
-		return
+		if !os.IsNotExist(err) {
+			xlog.Fatalf("destination directory %q stat error: %v", dstDirPath, err)
+			return
+		}
+		err = os.Mkdir(dstDirPath, 0755)
+		if err != nil {
+			xlog.Fatalf("destination directory %q create error: %v", dstDirPath, err)
+			return
+		}
+		stat, err = os.Lstat(dstDirPath)
+		if err != nil {
+			xlog.Fatalf("destination directory %q stat error: %v", dstDirPath, err)
+			return
+		}
 	}
 	if !stat.IsDir() {
-		xlog.Fatalf("destination %q is not directory", dstDirPath)
+		xlog.Fatalf("destination directory %q is not directory", dstDirPath)
 		return
 	}
 
 	tmpDirPath := dstDirPath +"/tmp"
 	if err := os.MkdirAll(tmpDirPath, 0755); err != nil {
-		xlog.Fatalf("destination temp directories %q create error: %v", tmpDirPath, err)
+		xlog.Fatalf("temp directories %q create error: %v", tmpDirPath, err)
 		return
 	}
 

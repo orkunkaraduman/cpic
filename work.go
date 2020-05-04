@@ -94,6 +94,7 @@ func workInFile(ctx context.Context, srcFilePath string, dstDirPath string, form
 		xlog.Errorf("source file %q seek error: %v", srcFilePath, err)
 		return false
 	}
+
 	buf := make([]byte, 32*1024)
 	fh := fileHash{}
 	sum := sha256.New()
