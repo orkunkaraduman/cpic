@@ -14,6 +14,8 @@ import (
 	"github.com/goinsane/xlog"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/mknote"
+
+	"gitlab.com/orkunkaraduman/cpic/fileutil"
 )
 
 func init() {
@@ -152,7 +154,7 @@ func main() {
 		defer wg.Done()
 		for _, srcDirPath := range srcDirPaths {
 			wg.Add(1)
-			fileScan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks, extensions)
+			fileutil.Scan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks)
 		}
 		close(srcFilePathCh)
 	}()
