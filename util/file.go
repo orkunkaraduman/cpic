@@ -1,4 +1,4 @@
-package fileutil
+package util
 
 import (
 	"context"
@@ -9,19 +9,19 @@ import (
 	"sync"
 )
 
-type scanRecursion struct {
+type fileScanRecursion struct {
 	depth         uint
 	firstRoot     string
 	firstRootStat os.FileInfo
 }
 
-func Scan(ctx context.Context, wg *sync.WaitGroup, root string, pathCh chan<- string, followSymLinks bool) error {
+func FileScan(ctx context.Context, wg *sync.WaitGroup, root string, pathCh chan<- string, followSymLinks bool) error {
 	defer wg.Done()
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return err
 	}
-	r := scanRecursion{}
+	r := fileScanRecursion{}
 	r.firstRoot = root
 	r.firstRootStat, err = os.Lstat(root)
 	if err != nil {
@@ -30,10 +30,10 @@ func Scan(ctx context.Context, wg *sync.WaitGroup, root string, pathCh chan<- st
 	if !r.firstRootStat.IsDir() {
 		return fmt.Errorf("root %s must be directory", root)
 	}
-	return scan(ctx, root, pathCh, followSymLinks, r)
+	return fileScan(ctx, root, pathCh, followSymLinks, r)
 }
 
-func scan(ctx context.Context, root string, pathCh chan<- string, followSymLinks bool, r scanRecursion) error {
+func fileScan(ctx context.Context, root string, pathCh chan<- string, followSymLinks bool, r fileScanRecursion) error {
 	rootHandle, err := os.OpenFile(root, os.O_RDONLY, 0)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func scan(ctx context.Context, root string, pathCh chan<- string, followSymLinks
 			if mode&os.ModeDir != 0 {
 				r2 := r
 				r2.depth++
-				if err := scan(ctx, path, pathCh, followSymLinks, r2); err != nil {
+				if err := fileScan(ctx, path, pathCh, followSymLinks, r2); err != nil {
 					return err
 				}
 				break
