@@ -6,16 +6,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/goinsane/xlog"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/mknote"
 
-	"gitlab.com/orkunkaraduman/cpic/fileutil"
+	"gitlab.com/orkunkaraduman/cpic/catalog"
 )
 
 func init() {
@@ -24,24 +23,13 @@ func init() {
 
 func main() {
 	var (
-		verbose        int
-		debugMode      bool
-		//srcDirPath     string
-		dstDirPath     string
-		followSymLinks bool
-		extList        string
-		format         string
-		rm             bool
-		srcDirPaths     []string
+		verbose   int
+		debugMode bool
+		workDir   string
 	)
 	flag.IntVar(&verbose, "v", 0, "verbose level")
 	flag.BoolVar(&debugMode, "debug", false, "debug mode")
-	//flag.StringVar(&srcDirPath, "s", ".", "source directory")
-	flag.StringVar(&dstDirPath, "d", ".", "destination directory")
-	flag.BoolVar(&followSymLinks, "l", false, "follow symbolic links")
-	flag.StringVar(&extList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extension list")
-	flag.StringVar(&format, "f", "%Y/%m/%d", "destination directory format")
-	flag.BoolVar(&rm, "r", false, "remove source")
+	flag.StringVar(&workDir, "w", ".", "working directory")
 	flag.Parse()
 
 	xlogOutputFlags := xlog.OutputFlagDate |
@@ -69,101 +57,97 @@ func main() {
 		ctxCancel()
 	}()
 
-	var err error
+	workDir = prepareWorkDir(workDir)
 
-	var stat os.FileInfo
-
-	srcDirPaths = make([]string, 0, flag.NArg())
-	for _, srcDirPath := range flag.Args() {
-		srcDirPath, err = filepath.Abs(srcDirPath)
-		if err != nil {
-			xlog.Fatalf("source directory %q abs error: %v", srcDirPath, err)
-			return
-		}
-		stat, err = os.Lstat(srcDirPath)
-		if err != nil {
-			xlog.Fatalf("source directory %q stat error: %v", srcDirPath, err)
-			return
-		}
-		if !stat.IsDir() {
-			xlog.Fatalf("source directory %q is not directory", srcDirPath)
-			return
-		}
-		srcDirPaths = append(srcDirPaths, srcDirPath)
+	tmpDir := workDir +"/tmp"
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		xlog.Fatalf("temp directory create error: %v", err)
 	}
 
-	dstDirPath, err = filepath.Abs(dstDirPath)
+	cat, err := catalog.New(workDir + "/cpic/catalog.sqlite3")
 	if err != nil {
-		xlog.Fatalf("destination directory %q abs error: %v", dstDirPath, err)
-		return
+		xlog.Fatalf("catalog initialize error: %v", err)
 	}
-	stat, err = os.Lstat(dstDirPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			xlog.Fatalf("destination directory %q stat error: %v", dstDirPath, err)
-			return
-		}
-		err = os.Mkdir(dstDirPath, 0755)
-		if err != nil {
-			xlog.Fatalf("destination directory %q create error: %v", dstDirPath, err)
-			return
-		}
-		stat, err = os.Lstat(dstDirPath)
-		if err != nil {
-			xlog.Fatalf("destination directory %q stat error: %v", dstDirPath, err)
-			return
-		}
+	defer cat.Close()
+
+	args := flag.Args()
+	if len(args) < 1 {
+		xlog.Fatal("command required")
 	}
-	if !stat.IsDir() {
-		xlog.Fatalf("destination directory %q is not directory", dstDirPath)
+	var cmd interface {
+		Command() *command
+		Prepare()
+		Run(ctx context.Context)
+	}
+	cmdName := args[0]
+	args = args[1:]
+	flagSet := flag.NewFlagSet(cmdName, flag.ExitOnError)
+	switch cmdName {
+	case "import":
+		c := &importCommand{}
+		flagSet.StringVar(&c.Format, "f", "%Y/%Y-%m/%Y-%m-%d/%Y%m%d-%H%M%S", "destination file format")
+		flagSet.BoolVar(&c.Remove, "r", false, "remove source")
+		flagSet.StringVar(&c.ExtList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extension list")
+		flagSet.BoolVar(&c.FollowSymLinks, "l", false, "follow symbolic links")
+		flagSet.Parse(args)
+		c.SrcDirs = flagSet.Args()
+		cmd = c
+	default:
+		xlog.Fatalf("command %q unknown", cmdName)
 		return
 	}
 
-	tmpDirPath := dstDirPath +"/tmp"
-	if err := os.MkdirAll(tmpDirPath, 0755); err != nil {
-		xlog.Fatalf("temp directories %q create error: %v", tmpDirPath, err)
-		return
+	*cmd.Command() = command{
+		WorkDir: workDir,
+		TmpDir:  tmpDir,
+		Catalog: cat,
 	}
+	cmd.Prepare()
 
-	extList = strings.ToUpper(extList)
-	extensions := make(map[string]struct{}, 128)
-	for _, ext := range strings.Split(extList, ",") {
-		ext = strings.TrimSpace(ext)
-		if ext == "" {
-			continue
-		}
-		extensions[ext] = struct{}{}
-	}
-
-	xlog.Info("cpic started")
+	xlog.Info("started")
 
 	wg := new(sync.WaitGroup)
-
-	//wg.Add(1)
-	go func() {
-		//defer wg.Done()
-		<-ctx.Done()
-		xlog.Info("cpic terminating")
-	}()
-
-	numCPU := runtime.NumCPU()
-	srcFilePathCh := make(chan string, numCPU*2)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for _, srcDirPath := range srcDirPaths {
-			wg.Add(1)
-			fileutil.Scan(ctx, wg, srcDirPath, srcFilePathCh, followSymLinks)
-		}
-		close(srcFilePathCh)
+		cmd.Run(ctx)
+		ctxCancel()
 	}()
 
-	for i := 0; i < numCPU; i++ {
-		wg.Add(1)
-		go copyFiles(ctx, wg, srcFilePathCh, dstDirPath, format, rm, tmpDirPath)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+		xlog.Info("terminating")
+	}()
 
 	wg.Wait()
-	xlog.Info("cpic terminated")
+	xlog.Info("terminated")
+	time.Sleep(250 * time.Millisecond)
+}
+
+func prepareWorkDir(workDir string) (absWorkDir string) {
+	absWorkDir, err := filepath.Abs(workDir)
+	if err != nil {
+		xlog.Fatalf("working directory abs error: %v", err)
+	}
+	stat, err := os.Lstat(workDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			xlog.Fatalf("working directory stat error: %v", err)
+		}
+		err = os.Mkdir(workDir, 0755)
+		if err != nil {
+			xlog.Fatalf("working directory create error: %v", err)
+		}
+		stat, err = os.Lstat(workDir)
+		if err != nil {
+			xlog.Fatalf("working directory stat error: %v", err)
+		}
+	}
+	if !stat.IsDir() {
+		xlog.Fatalf("working directory %q is not a directory", workDir)
+	}
+	return
 }
