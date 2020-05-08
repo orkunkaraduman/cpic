@@ -41,7 +41,7 @@ func New(path string) (*Catalog, error) {
 	dbValues.Set("_auto_vacuum", "INCREMENTAL")
 	dbValues.Set("_busy_timeout", "10000")
 	dbValues.Set("_journal_mode", "WAL")
-	dbValues.Set("_locking_mode", "EXCLUSIVE")
+	dbValues.Set("_locking_mode", "NORMAL")
 	dbValues.Set("mode", "rwc")
 	dbValues.Set("_mutex", "full")
 	dbValues.Set("_synchronous", "NORMAL")
@@ -75,14 +75,14 @@ func (c *Catalog) Close() {
 	}
 }
 
-func (c *Catalog) NewPicture(pic *Picture) error {
+func (c *Catalog) NewPicture(pic Picture) error {
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return err
 	}
 	defer tx.RollbackUnlessCommitted()
 
-	mdl := &modelPicture{Picture: *pic}
+	mdl := &modelPicture{Picture: pic}
 	if err := tx.Take(mdl).Error; !gorm.IsRecordNotFoundError(err) {
 		if err == nil {
 			return ErrPictureAlreadyExists
@@ -108,14 +108,14 @@ func (c *Catalog) NewPicture(pic *Picture) error {
 	return nil
 }
 
-func (c *Catalog) UpdatePicture(pic *Picture) error {
+func (c *Catalog) UpdatePicture(pic Picture) error {
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return err
 	}
 	defer tx.RollbackUnlessCommitted()
 
-	pictureMdl := &modelPicture{Picture: *pic}
+	pictureMdl := &modelPicture{Picture: pic}
 	if err := tx.Take(pictureMdl).Error; err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 			return ErrPictureNotFound
@@ -125,13 +125,13 @@ func (c *Catalog) UpdatePicture(pic *Picture) error {
 
 	pathMdl := &modelPicture{}
 	if err := tx.Take(pathMdl, &modelPicture{Picture: Picture{Path: pic.Path}}).Error; !gorm.IsRecordNotFoundError(err) {
-		if err == nil && !pictureMdl.IsSame(pic) {
+		if err == nil && !pictureMdl.IsSame(&pic) {
 			return ErrPathAlreadyExists
 		}
 		return err
 	}
 
-	mdl := &modelPicture{Picture: *pic}
+	mdl := &modelPicture{Picture: pic}
 	if err := tx.Save(mdl).Error; err != nil {
 		return err
 	}
