@@ -18,12 +18,12 @@ func NewLocker() *Locker {
 func (l *Locker) Lock(name string) {
 	for {
 		l.mu.Lock()
-		if _, ok := l.chs[name]; !ok {
+		ch, ok := l.chs[name]
+		if !ok {
 			l.chs[name] = make(chan struct{})
 			l.mu.Unlock()
 			return
 		}
-		ch := l.chs[name]
 		l.mu.Unlock()
 		<-ch
 	}
@@ -31,7 +31,8 @@ func (l *Locker) Lock(name string) {
 
 func (l *Locker) Unlock(name string) {
 	l.mu.Lock()
-	if ch, ok := l.chs[name]; ok {
+	ch, ok := l.chs[name]
+	if ok {
 		delete(l.chs, name)
 		close(ch)
 	}

@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/goinsane/xlog"
 	"github.com/jehiah/go-strftime"
@@ -36,13 +37,33 @@ type importCommand struct {
 	format  string
 	srcDirs []string
 	extList map[string]struct{}
-	locker  *util.Locker
+
+	stats struct {
+		total            uint64
+		unknownExtension uint64
+		exifNotFound     uint64
+		exifError        uint64
+		alreadyExists    uint64
+		renamed          uint64
+		imported         uint64
+		removed          uint64
+	}
 }
 
 func (c *importCommand) Prepare() {
-	c.format = strings.Trim(filepath.Clean(c.Format), string(os.PathSeparator))
-	if s := strings.ToLower(c.format); s == "cpic" || strings.HasPrefix(s, "cpic"+string(os.PathSeparator)) {
-		xlog.Fatalf("format %q must be different than %q dir", c.Format, "cpic")
+	c.format = filepath.FromSlash(c.Format)
+	if c.format[0] == os.PathSeparator {
+		xlog.Fatalf("format %q must be relative path", c.Format)
+	}
+	if c.format[len(c.format)-1] == os.PathSeparator {
+		xlog.Fatalf("format %q must be file name prefix", c.Format)
+	}
+	c.format = filepath.Clean(c.format)
+	lFormat := strings.ToLower(c.format)
+	for _, dir := range []string{"cpic", "tmp"} {
+		if lFormat == dir || strings.HasPrefix(lFormat, dir+string(os.PathSeparator)) {
+			xlog.Fatalf("format %q must be different than %q directory", c.Format, dir)
+		}
 	}
 
 	c.srcDirs = make([]string, 0, 128)
@@ -69,8 +90,6 @@ func (c *importCommand) Prepare() {
 		}
 		c.extList[ext] = struct{}{}
 	}
-
-	c.locker = util.NewLocker()
 }
 
 func (c *importCommand) Run(ctx context.Context) {
@@ -108,6 +127,16 @@ func (c *importCommand) Run(ctx context.Context) {
 	}
 
 	wg.Wait()
+	xlog.WithFieldKeyVals(
+		"total", c.stats.total,
+		"unknownExtension", c.stats.unknownExtension,
+		"exifNotFound", c.stats.exifNotFound,
+		"exifError", c.stats.exifError,
+		"alreadyExists", c.stats.alreadyExists,
+		"renamed", c.stats.renamed,
+		"imported", c.stats.imported,
+		"removed", c.stats.removed,
+	).Infof("%d of %d pictures successfully imported", c.stats.imported, c.stats.total)
 }
 
 func (c *importCommand) copyFiles(ctx context.Context, srcFileCh <-chan string) error {
@@ -119,13 +148,24 @@ func (c *importCommand) copyFiles(ctx context.Context, srcFileCh <-chan string) 
 			if !ok {
 				return nil
 			}
+
+			atomic.AddUint64(&c.stats.total, 1)
+
+			if _, ok := c.extList[strings.TrimPrefix(strings.ToUpper(filepath.Ext(srcFile)), ".")]; !ok {
+				xlog.V(5).Warningf("picture %q has unknown extension", srcFile)
+				atomic.AddUint64(&c.stats.unknownExtension, 1)
+				break
+			}
+
 			if err := c.copyFile(ctx, srcFile); err != nil {
 				return err
 			}
+
 			if c.Remove {
 				if err := os.Remove(srcFile); err != nil {
 					return fmt.Errorf("source file remove error: %w", err)
 				}
+				atomic.AddUint64(&c.stats.removed, 1)
 			}
 		}
 	}
@@ -146,27 +186,21 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 		return fmt.Errorf("source file %q is not a reqular file", srcFile)
 	}
 
-	dstExt := filepath.Ext(srcFile)
-	dstBase := strings.ToUpper(strings.TrimSuffix(filepath.Base(srcFile), dstExt))
-	dstExt = strings.ToUpper(dstExt)
-	dstDir := "noexif"
-	if _, ok := c.extList[strings.TrimPrefix(dstExt, ".")]; !ok {
-		xlog.V(5).Warningf("picture %q has not needing extension", srcFile)
-		return nil
-	}
-
 	pic := catalog.Picture{}
 
 	if ef, err := exif.Decode(srcFileHandle); err != nil {
 		if !errors.Is(err, io.EOF) {
 			xlog.V(3).Warningf("source file %q exif decode error: %v", srcFile, err)
+			atomic.AddUint64(&c.stats.exifError, 1)
 		} else {
 			xlog.V(4).Warningf("source file %q exif not found", srcFile)
+			atomic.AddUint64(&c.stats.exifNotFound, 1)
 		}
 	} else {
 		tm, err := ef.DateTime()
 		if err != nil {
 			xlog.V(3).Warningf("source file %q exif get datetime error: %v", srcFile, err)
+			atomic.AddUint64(&c.stats.exifError, 1)
 		} else {
 			pic.TakenAt = &tm
 		}
@@ -176,6 +210,10 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 		return fmt.Errorf("source file seek error: %w", err)
 	}
 
+	dstExt := filepath.Ext(srcFile)
+	dstBase := strings.ToUpper(strings.TrimSuffix(filepath.Base(srcFile), dstExt))
+	dstExt = strings.ToUpper(dstExt)
+	dstDir := "noexif"
 	if pic.TakenAt != nil {
 		s := strftime.Format(c.format, *pic.TakenAt)
 		dstDir = filepath.Dir(s)
@@ -219,10 +257,11 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	dstFile := dstDir + string(os.PathSeparator) + dstFileName
 	dstAbsFile := c.WorkDir + string(os.PathSeparator) + dstFile
 
-	for i := 0; i < 1+len(pic.SumSHA256)/4; i++ {
+	hashStr := pic.SumMD5 + pic.SumSHA256
+	for i := 0; i < 1+len(hashStr)/4; i++ {
 		if i > 0 {
 			k := (i - 1) * 4
-			dstFileName = dstBase + "-" + pic.SumSHA256[k:k+4] + dstExt
+			dstFileName = dstBase + "-" + hashStr[k:k+4] + dstExt
 			dstFile = dstDir + string(os.PathSeparator) + dstFileName
 			dstAbsFile = c.WorkDir + string(os.PathSeparator) + dstFile
 		}
@@ -233,6 +272,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 			}
 			if errors.Is(err, catalog.ErrPictureAlreadyExists) {
 				xlog.V(2).Warningf("picture %q already exists", srcFile)
+				atomic.AddUint64(&c.stats.alreadyExists, 1)
 				return nil
 			}
 			return err
@@ -259,6 +299,10 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 			return err
 		}
 		copyOK = true
+		if i > 0 {
+			xlog.V(5).Warningf("picture %q renamed to %q", srcFile, dstFile)
+			atomic.AddUint64(&c.stats.renamed, 1)
+		}
 		break
 	}
 
@@ -266,6 +310,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 		return fmt.Errorf("picture %q destination file path collision error", srcFile)
 	}
 
-	xlog.V(1).Infof("picture %q imported", srcFile)
+	xlog.V(1).Infof("picture %q imported to %q", srcFile, dstFile)
+	atomic.AddUint64(&c.stats.imported, 1)
 	return nil
 }
