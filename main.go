@@ -59,7 +59,7 @@ func main() {
 
 	workDir = prepareWorkDir(workDir)
 
-	tmpDir := workDir +"/tmp"
+	tmpDir := workDir + "/tmp"
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		xlog.Fatalf("temp directory create error: %v", err)
 	}
@@ -85,6 +85,7 @@ func main() {
 	switch cmdName {
 	case "import":
 		c := &importCommand{}
+		flagSet.IntVar(&c.WorkerCount, "c", 0, "worker count")
 		flagSet.StringVar(&c.Format, "f", "%Y/%Y-%m/%Y-%m-%d/%Y%m%d-%H%M%S", "destination file format")
 		flagSet.BoolVar(&c.Remove, "r", false, "remove source")
 		flagSet.StringVar(&c.ExtList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extension list")

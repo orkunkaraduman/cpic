@@ -28,6 +28,7 @@ import (
 type importCommand struct {
 	command
 
+	WorkerCount    int
 	Format         string
 	Remove         bool
 	ExtList        string
@@ -96,7 +97,10 @@ func (c *importCommand) Run(ctx context.Context) {
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 	wg := new(sync.WaitGroup)
-	workerCount := runtime.NumCPU()
+	workerCount := c.WorkerCount
+	if workerCount <= 0 {
+		workerCount = runtime.NumCPU()
+	}
 	srcFileCh := make(chan string, workerCount*2)
 
 	wg.Add(1)
