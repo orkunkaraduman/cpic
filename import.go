@@ -33,12 +33,18 @@ type importCommand struct {
 	FollowSymLinks bool
 	SrcDirs        []string
 
+	format  string
 	srcDirs []string
 	extList map[string]struct{}
 	locker  *util.Locker
 }
 
 func (c *importCommand) Prepare() {
+	c.format = strings.Trim(filepath.Clean(c.Format), string(os.PathSeparator))
+	if s := strings.ToLower(c.format); s == "cpic" || strings.HasPrefix(s, "cpic"+string(os.PathSeparator)) {
+		xlog.Fatalf("format %q must be different than %q dir", c.Format, "cpic")
+	}
+
 	c.srcDirs = make([]string, 0, 128)
 	for _, srcDir := range c.SrcDirs {
 		absSrcDir, err := filepath.Abs(srcDir)
@@ -171,9 +177,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	}
 
 	if pic.TakenAt != nil {
-		s := strftime.Format(c.Format, *pic.TakenAt)
-		s = filepath.Clean(s)
-		s = strings.Trim(s, string(os.PathSeparator))
+		s := strftime.Format(c.format, *pic.TakenAt)
 		dstDir = filepath.Dir(s)
 		dstBase = filepath.Base(s)
 	}
@@ -222,7 +226,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 			dstFile = dstDir + string(os.PathSeparator) + dstFileName
 			dstAbsFile = c.WorkDir + string(os.PathSeparator) + dstFile
 		}
-		pic.Path = strings.ReplaceAll(dstFile, string(os.PathSeparator), "/")
+		pic.Path = filepath.ToSlash(dstFile)
 		if err := c.Catalog.NewPicture(pic); err != nil {
 			if errors.Is(err, catalog.ErrPathAlreadyExists) {
 				continue
