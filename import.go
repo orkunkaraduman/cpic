@@ -252,6 +252,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 			if _, err := c.Catalog.DeletePicture(pic.Path); err != nil {
 				xlog.Warningf("picture %q delete catalog record error, possibly data inconsistency: %v", err)
 			}
+			return err
 		}
 		copyOK = true
 		break
