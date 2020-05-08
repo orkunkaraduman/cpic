@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 type fileScanRecursion struct {
@@ -15,8 +14,7 @@ type fileScanRecursion struct {
 	firstRootStat os.FileInfo
 }
 
-func FileScan(ctx context.Context, wg *sync.WaitGroup, root string, pathCh chan<- string, followSymLinks bool) error {
-	defer wg.Done()
+func FileScan(ctx context.Context, root string, pathCh chan<- string, followSymLinks bool) error {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return err
@@ -46,14 +44,10 @@ func fileScan(ctx context.Context, root string, pathCh chan<- string, followSymL
 	}
 
 	for _, stat := range stats {
-		done := false
 		select {
 		case <-ctx.Done():
-			done = true
+			return ctx.Err()
 		default:
-		}
-		if done {
-			break
 		}
 
 		path := root + string(os.PathSeparator) + stat.Name()
@@ -76,7 +70,7 @@ func fileScan(ctx context.Context, root string, pathCh chan<- string, followSymL
 			if mode&os.ModeType == 0 {
 				select {
 				case <-ctx.Done():
-					done = true
+					return ctx.Err()
 				case pathCh <- path:
 				}
 				break
