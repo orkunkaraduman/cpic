@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
@@ -19,6 +20,7 @@ var (
 )
 
 type Catalog struct {
+	mu sync.RWMutex
 	db *gorm.DB
 }
 
@@ -38,16 +40,16 @@ func New(path string) (*Catalog, error) {
 	}
 
 	dbValues := make(url.Values)
-	dbValues.Set("_auto_vacuum", "INCREMENTAL")
+	dbValues.Set("_auto_vacuum", "incremental")
 	dbValues.Set("_busy_timeout", "60000")
 	dbValues.Set("_journal_mode", "WAL")
-	dbValues.Set("_locking_mode", "EXCLUSIVE")
+	dbValues.Set("_locking_mode", "NORMAL")
 	dbValues.Set("mode", "rwc")
 	dbValues.Set("_mutex", "full")
 	dbValues.Set("cache", "shared")
 	dbValues.Set("_synchronous", "NORMAL")
 	dbValues.Set("_loc", "UTC")
-	dbValues.Set("_txlock", "DEFERRED")
+	dbValues.Set("_txlock", "exclusive")
 	if idx := strings.Index(path, "?"); idx >= 0 {
 		path = path[:idx]
 	}
@@ -61,7 +63,6 @@ func New(path string) (*Catalog, error) {
 
 	c.db.LogMode(false)
 
-	//err = c.db.Set("gorm:table_options", "CHARACTER SET utf8 COLLATE utf8_general_ci").AutoMigrate(&modelPicture{}).Error
 	err = c.db.AutoMigrate(&modelPicture{}).Error
 	if err != nil {
 		return nil, err
@@ -77,6 +78,9 @@ func (c *Catalog) Close() {
 }
 
 func (c *Catalog) NewPicture(pic Picture) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return err
@@ -110,6 +114,9 @@ func (c *Catalog) NewPicture(pic Picture) error {
 }
 
 func (c *Catalog) UpdatePicture(pic Picture) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return err
@@ -144,6 +151,9 @@ func (c *Catalog) UpdatePicture(pic Picture) error {
 }
 
 func (c *Catalog) GetPicture(path string) (*Picture, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return nil, err
@@ -161,6 +171,9 @@ func (c *Catalog) GetPicture(path string) (*Picture, error) {
 }
 
 func (c *Catalog) DeletePicture(path string) (*Picture, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	tx := c.db.Begin()
 	if err := tx.Error; err != nil {
 		return nil, err
