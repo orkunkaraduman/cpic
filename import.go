@@ -18,7 +18,6 @@ import (
 	"sync/atomic"
 
 	"github.com/goinsane/xlog"
-	"github.com/jehiah/go-strftime"
 
 	"gitlab.com/orkunkaraduman/cpic/catalog"
 	"gitlab.com/orkunkaraduman/cpic/exiftool"
@@ -196,8 +195,8 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 
 	pic := catalog.Picture{
 		Format: c.Format,
-		Name: filepath.Base(srcFile),
-		Ext: filepath.Ext(srcFile),
+		Name:   filepath.Base(srcFile),
+		Ext:    filepath.Ext(srcFile),
 	}
 
 	if t, err := exiftool.ReadTagsFromFileContext(ctx, srcFile); err != nil {
@@ -229,7 +228,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	dstExt := strings.ToUpper(pic.Ext)
 	dstDir := "noinfo"
 	if pic.TakenAt != nil {
-		s := strftime.Format(c.format, *pic.TakenAt) + "-" + dstBase
+		s := util.Strftime(c.format, *pic.TakenAt) + "-" + dstBase
 		dstDir = filepath.Dir(s)
 		dstBase = filepath.Base(s)
 	}
