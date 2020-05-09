@@ -9,7 +9,7 @@ type Picture struct {
 	SumMD5    string `gorm:"type:char(32);not null;primary_key"`
 	SumSHA256 string `gorm:"type:char(64);not null;primary_key"`
 	Size      int64  `gorm:"type:bigint;not null;primary_key"`
-	Path      string `gorm:"type:varchar(1024);not null;unique_index"`
+	Path      string `gorm:"type:varchar(4096);not null;unique_index"`
 	TakenAt   *time.Time
 }
 
