@@ -157,10 +157,12 @@ func (c *importCommand) copyFiles(ctx context.Context, srcFileCh <-chan string) 
 
 			atomic.AddUint64(&c.stats.total, 1)
 
-			if _, ok := c.extList[strings.TrimPrefix(strings.ToUpper(filepath.Ext(srcFile)), ".")]; !ok {
-				xlog.V(5).Warningf("picture %q has unknown extension", srcFile)
-				atomic.AddUint64(&c.stats.unknownExtension, 1)
-				break
+			if len(c.extList) > 0 {
+				if _, ok := c.extList[strings.TrimPrefix(strings.ToUpper(filepath.Ext(srcFile)), ".")]; !ok {
+					xlog.V(5).Warningf("picture %q has unknown extension", srcFile)
+					atomic.AddUint64(&c.stats.unknownExtension, 1)
+					break
+				}
 			}
 
 			if err := c.copyFile(ctx, srcFile); err != nil {
