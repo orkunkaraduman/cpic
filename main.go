@@ -82,7 +82,7 @@ func main() {
 		flagSet.IntVar(&c.WorkerCount, "c", 0, "worker count")
 		flagSet.StringVar(&c.Format, "f", "%Y/%Y-%m/%Y-%m-%d/%Y%m%d-%H%M%S%L", "destination file format")
 		flagSet.BoolVar(&c.Remove, "r", false, "remove source")
-		flagSet.StringVar(&c.ExtList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF,AVI,MOV,MPG,MPEG,MP4,MKV", "extension list")
+		flagSet.StringVar(&c.ExtList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF,DNG,HEIC,AVI,MOV,MPG,MPEG,MP4,MKV,3GP", "extension list")
 		flagSet.BoolVar(&c.FollowSymLinks, "l", false, "follow symbolic links")
 		flagSet.Parse(args)
 		c.SrcDirs = flagSet.Args()
