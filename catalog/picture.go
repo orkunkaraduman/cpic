@@ -10,7 +10,11 @@ type Picture struct {
 	SumSHA256 string `gorm:"type:char(64);not null;primary_key"`
 	Size      int64  `gorm:"type:bigint;not null;primary_key"`
 	Path      string `gorm:"type:varchar(4096);not null;unique_index"`
+	Format    string `gorm:"type:varchar(1024);not null"`
+	Name      string `gorm:"type:varchar(256);not null;index"`
+	Ext       string `gorm:"type:varchar(256);not null;index"`
 	TakenAt   *time.Time
+	Renamed   bool
 }
 
 func (p *Picture) IsSame(p2 *Picture) bool {

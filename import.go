@@ -158,7 +158,7 @@ func (c *importCommand) copyFiles(ctx context.Context, srcFileCh <-chan string) 
 			atomic.AddUint64(&c.stats.total, 1)
 
 			if len(c.extList) > 0 {
-				if _, ok := c.extList[strings.TrimPrefix(strings.ToUpper(filepath.Ext(srcFile)), ".")]; !ok {
+				if _, ok := c.extList[strings.ToUpper(strings.TrimPrefix(filepath.Ext(srcFile), "."))]; !ok {
 					xlog.V(5).Warningf("picture %q has unknown extension", srcFile)
 					atomic.AddUint64(&c.stats.unknownExtension, 1)
 					break
@@ -194,7 +194,11 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 		return fmt.Errorf("source file %q is not a reqular file", srcFile)
 	}
 
-	pic := catalog.Picture{}
+	pic := catalog.Picture{
+		Format: c.Format,
+		Name: filepath.Base(srcFile),
+		Ext: filepath.Ext(srcFile),
+	}
 
 	if t, err := exiftool.ReadTagsFromFileContext(ctx, srcFile); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -221,9 +225,8 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 		return fmt.Errorf("source file seek error: %w", err)
 	}
 
-	dstExt := filepath.Ext(srcFile)
-	dstBase := strings.ToUpper(strings.TrimSuffix(filepath.Base(srcFile), dstExt))
-	dstExt = strings.ToUpper(dstExt)
+	dstBase := strings.ToUpper(strings.TrimSuffix(pic.Name, pic.Ext))
+	dstExt := strings.ToUpper(pic.Ext)
 	dstDir := "noinfo"
 	if pic.TakenAt != nil {
 		s := strftime.Format(c.format, *pic.TakenAt) + "-" + dstBase
@@ -275,6 +278,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 			dstFileName = dstBase + "-" + hashStr[k:k+4] + dstExt
 			dstFile = dstDir + string(os.PathSeparator) + dstFileName
 			dstAbsFile = c.WorkDir + string(os.PathSeparator) + dstFile
+			pic.Renamed = true
 		}
 		pic.Path = filepath.ToSlash(dstFile)
 		if err := c.Catalog.NewPicture(pic); err != nil {
