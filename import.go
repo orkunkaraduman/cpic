@@ -19,9 +19,9 @@ import (
 
 	"github.com/goinsane/xlog"
 	"github.com/jehiah/go-strftime"
-	"github.com/rwcarlsen/goexif/exif"
 
 	"gitlab.com/orkunkaraduman/cpic/catalog"
+	"gitlab.com/orkunkaraduman/cpic/exiftool"
 	"gitlab.com/orkunkaraduman/cpic/util"
 )
 
@@ -42,8 +42,8 @@ type importCommand struct {
 	stats struct {
 		total            uint64
 		unknownExtension uint64
-		exifNotFound     uint64
-		exifError        uint64
+		infoError        uint64
+		dateTimeError    uint64
 		alreadyExists    uint64
 		renamed          uint64
 		imported         uint64
@@ -134,8 +134,8 @@ func (c *importCommand) Run(ctx context.Context) {
 	xlog.WithFieldKeyVals(
 		"total", c.stats.total,
 		"unknownExtension", c.stats.unknownExtension,
-		"exifNotFound", c.stats.exifNotFound,
-		"exifError", c.stats.exifError,
+		"infoError", c.stats.infoError,
+		"dateTimeError", c.stats.dateTimeError,
 		"alreadyExists", c.stats.alreadyExists,
 		"renamed", c.stats.renamed,
 		"imported", c.stats.imported,
@@ -192,19 +192,14 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 
 	pic := catalog.Picture{}
 
-	if ef, err := exif.Decode(srcFileHandle); err != nil {
-		if !errors.Is(err, io.EOF) {
-			xlog.V(3).Warningf("source file %q exif decode error: %v", srcFile, err)
-			atomic.AddUint64(&c.stats.exifError, 1)
-		} else {
-			xlog.V(4).Warningf("source file %q exif not found", srcFile)
-			atomic.AddUint64(&c.stats.exifNotFound, 1)
-		}
+	if t, err := exiftool.ReadTagsFromFileContext(ctx, srcFile); err != nil {
+		xlog.V(3).Warningf("source file %q info error: %v", srcFile, err)
+		atomic.AddUint64(&c.stats.infoError, 1)
 	} else {
-		tm, err := ef.DateTime()
+		tm, err := t.DateTime()
 		if err != nil {
-			xlog.V(3).Warningf("source file %q exif get datetime error: %v", srcFile, err)
-			atomic.AddUint64(&c.stats.exifError, 1)
+			xlog.V(3).Warningf("source file %q datetime error: %v", srcFile, err)
+			atomic.AddUint64(&c.stats.dateTimeError, 1)
 		} else {
 			pic.TakenAt = &tm
 		}
@@ -217,7 +212,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	dstExt := filepath.Ext(srcFile)
 	dstBase := strings.ToUpper(strings.TrimSuffix(filepath.Base(srcFile), dstExt))
 	dstExt = strings.ToUpper(dstExt)
-	dstDir := "noexif"
+	dstDir := "noinfo"
 	if pic.TakenAt != nil {
 		s := strftime.Format(c.format, *pic.TakenAt)
 		dstDir = filepath.Dir(s)

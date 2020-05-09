@@ -11,15 +11,9 @@ import (
 	"time"
 
 	"github.com/goinsane/xlog"
-	"github.com/rwcarlsen/goexif/exif"
-	"github.com/rwcarlsen/goexif/mknote"
 
 	"gitlab.com/orkunkaraduman/cpic/catalog"
 )
-
-func init() {
-	exif.RegisterParsers(mknote.All...)
-}
 
 func main() {
 	var (
