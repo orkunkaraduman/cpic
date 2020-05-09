@@ -80,7 +80,7 @@ func main() {
 	case "import":
 		c := &importCommand{}
 		flagSet.IntVar(&c.WorkerCount, "c", 0, "worker count")
-		flagSet.StringVar(&c.Format, "f", "%Y/%Y-%m/%Y-%m-%d/%Y%m%d-%H%M%S", "destination file format")
+		flagSet.StringVar(&c.Format, "f", "%Y/%Y-%m/%Y-%m-%d/%Y%m%d-%H%M%S%L", "destination file format")
 		flagSet.BoolVar(&c.Remove, "r", false, "remove source")
 		flagSet.StringVar(&c.ExtList, "e", "JPG,JPEG,PNG,TIFF,CR2,NEF", "extension list")
 		flagSet.BoolVar(&c.FollowSymLinks, "l", false, "follow symbolic links")

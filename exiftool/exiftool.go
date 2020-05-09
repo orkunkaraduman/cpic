@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -27,24 +28,36 @@ func ReadTagsFromFile(path string) (Tags, error) {
 
 func ReadTagsFromFileContext(ctx context.Context, path string) (Tags, error) {
 	cmd := exec.CommandContext(ctx, "exiftool", "-s2", path)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
 	defer stdout.Close()
+
 	err = cmd.Start()
 	if err != nil {
 		return nil, err
 	}
+
 	t, err := ReadTags(stdout)
 	if err != nil {
 		return nil, err
 	}
+
 	err = cmd.Wait()
-	if err, ok := err.(*exec.ExitError); ok && err.ExitCode() != 0 && t["Error"] != "" {
-		return nil, fmt.Errorf("%w: %s", err, t["Error"])
-	}
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		if err, ok := err.(*exec.ExitError); ok && err.ExitCode() != 0 && t["Error"] != "" {
+			return nil, fmt.Errorf("%w: %s", err, t["Error"])
+		}
 		return nil, err
 	}
 	return t, nil

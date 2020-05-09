@@ -44,6 +44,7 @@ type importCommand struct {
 		unknownExtension uint64
 		infoError        uint64
 		dateTimeError    uint64
+		dateTimeNotFound uint64
 		alreadyExists    uint64
 		renamed          uint64
 		imported         uint64
@@ -136,6 +137,7 @@ func (c *importCommand) Run(ctx context.Context) {
 		"unknownExtension", c.stats.unknownExtension,
 		"infoError", c.stats.infoError,
 		"dateTimeError", c.stats.dateTimeError,
+		"dateTimeNotFound", c.stats.dateTimeNotFound,
 		"alreadyExists", c.stats.alreadyExists,
 		"renamed", c.stats.renamed,
 		"imported", c.stats.imported,
@@ -193,13 +195,21 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	pic := catalog.Picture{}
 
 	if t, err := exiftool.ReadTagsFromFileContext(ctx, srcFile); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		xlog.V(3).Warningf("source file %q info error: %v", srcFile, err)
 		atomic.AddUint64(&c.stats.infoError, 1)
 	} else {
 		tm, err := t.DateTime()
 		if err != nil {
-			xlog.V(3).Warningf("source file %q datetime error: %v", srcFile, err)
-			atomic.AddUint64(&c.stats.dateTimeError, 1)
+			if errors.Is(err, exiftool.ErrDateTimeNotFound) {
+				xlog.V(4).Warningf("source file %q datetime not found", srcFile)
+				atomic.AddUint64(&c.stats.dateTimeNotFound, 1)
+			} else {
+				xlog.V(3).Warningf("source file %q datetime error: %v", srcFile, err)
+				atomic.AddUint64(&c.stats.dateTimeError, 1)
+			}
 		} else {
 			pic.TakenAt = &tm
 		}
@@ -214,7 +224,7 @@ func (c *importCommand) copyFile(ctx context.Context, srcFile string) error {
 	dstExt = strings.ToUpper(dstExt)
 	dstDir := "noinfo"
 	if pic.TakenAt != nil {
-		s := strftime.Format(c.format, *pic.TakenAt)
+		s := strftime.Format(c.format, *pic.TakenAt) + "-" + dstBase
 		dstDir = filepath.Dir(s)
 		dstBase = filepath.Base(s)
 	}
